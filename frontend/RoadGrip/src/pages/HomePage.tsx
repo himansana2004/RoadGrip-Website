@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useApp } from "../context/AppContext";
-import { products } from "../data/products";
 import ProductCard from "../components/ProductCard";
 import StarRating from "../components/StarRating";
 import { ChevronRight, Truck, Shield, RotateCcw, Phone } from "../components/Icons";
@@ -23,25 +22,25 @@ const HERO_SLIDES = [
 const CATEGORIES = [
   {
     name: "Car Tyres",
-    count: "120+ products",
+    count: "Browse available tyres",
     image: "https://images.unsplash.com/photo-1578844251758-2f71da64c96f?w=600&h=400&fit=crop&auto=format",
     cat: "Car",
   },
   {
     name: "SUV Tyres",
-    count: "64 products",
+    count: "Browse available tyres",
     image: "https://images.unsplash.com/photo-1627490600102-5c1d45491d57?w=600&h=400&fit=crop&auto=format",
     cat: "SUV",
   },
   {
     name: "Bike Tyres",
-    count: "38 products",
+    count: "Browse available tyres",
     image: "https://images.unsplash.com/photo-1761092992664-60c73c46c4ca?w=600&h=400&fit=crop&auto=format",
     cat: "Bike",
   },
   {
     name: "Van Tyres",
-    count: "45 products",
+    count: "Browse available tyres",
     image: "https://images.unsplash.com/photo-1624339024061-b435d9261c1d?w=600&h=400&fit=crop&auto=format",
     cat: "Van",
   },
@@ -71,18 +70,19 @@ const TESTIMONIALS = [
   },
 ];
 
-const VEHICLE_MAKES = ["BMW", "Audi", "Mercedes", "Ford", "Vauxhall", "Toyota", "Honda", "Volkswagen", "Nissan", "Hyundai"];
-const VEHICLE_MODELS: Record<string, string[]> = {
-  BMW: ["3 Series", "5 Series", "X5", "M3", "1 Series"],
-  Audi: ["A3", "A4", "Q5", "TT", "A6"],
-  Ford: ["Focus", "Fiesta", "Kuga", "Mondeo", "Puma"],
-};
-
 export default function HomePage() {
-  const { navigate } = useApp();
+  const { navigate, products } = useApp();
+  const tyreWidths = [...new Set(products.map((product) => product.width))].sort((a, b) => a - b);
+  const tyreProfiles = [...new Set(products.map((product) => product.aspectRatio))].sort((a, b) => a - b);
+  const tyreRims = [...new Set(products.map((product) => product.rimDiameter))].sort((a, b) => a - b);
   const [heroSlide, setHeroSlide] = useState(0);
-  const [selectedMake, setSelectedMake] = useState("");
-  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedWidth, setSelectedWidth] = useState(String(products[0]?.width ?? ""));
+  const [selectedProfile, setSelectedProfile] = useState(String(products[0]?.aspectRatio ?? ""));
+  const [selectedRim, setSelectedRim] = useState(String(products[0]?.rimDiameter ?? ""));
+
+  const widthValue = selectedWidth || String(tyreWidths[0] ?? "");
+  const profileValue = selectedProfile || String(tyreProfiles[0] ?? "");
+  const rimValue = selectedRim || String(tyreRims[0] ?? "");
 
   const featured = products.filter((p) => p.isBestseller || p.isNew).slice(0, 8);
 
@@ -91,16 +91,15 @@ export default function HomePage() {
       {/* Hero */}
       <section className="relative h-[85vh] min-h-[520px] overflow-hidden bg-brand-black">
         <img
-          src={HERO_SLIDES[heroSlide].image}
+         src={HERO_SLIDES[heroSlide].image}
           alt="Hero tyre"
           className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
         />
         <div className="hero-overlay absolute inset-0" />
         <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col justify-center">
-          <div className="max-w-lg">
             <p className="text-brand-red font-display font-600 text-sm uppercase tracking-widest mb-3">
               #1 Tyre Retailer UK
-            </p>
+          </p>
             <h1 className="font-display font-900 text-white text-4xl sm:text-5xl lg:text-6xl leading-tight whitespace-pre-line mb-4">
               {HERO_SLIDES[heroSlide].headline}
             </h1>
@@ -116,7 +115,6 @@ export default function HomePage() {
               </button>
             </div>
           </div>
-        </div>
         {/* Slide dots */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2">
           {HERO_SLIDES.map((_, i) => (
@@ -134,10 +132,10 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { icon: Truck, label: "Free Delivery", sub: "Orders over £150" },
+              { icon: Truck, label: "Free Delivery", sub: "Orders over Rs 150" },
               { icon: Shield, label: "Genuine Products", sub: "100% authentic brands" },
               { icon: RotateCcw, label: "Easy Returns", sub: "14-day return policy" },
-              { icon: Phone, label: "Expert Support", sub: "0800 123 4567" },
+              { icon: Phone, label: "Expert Support", sub: "0775696373" },
             ].map(({ icon: Icon, label, sub }) => (
               <div key={label} className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-brand-red/20 rounded-lg flex items-center justify-center shrink-0">
@@ -160,62 +158,33 @@ export default function HomePage() {
             <h2 className="section-title font-display text-2xl sm:text-3xl font-800 mx-auto">
               Find Tyres for Your Vehicle
             </h2>
-            <p className="text-brand-gray text-sm mt-4">Select your vehicle or enter tyre size to find the perfect match</p>
+            <p className="text-brand-gray text-sm mt-4">Enter tyre size to find the perfect match</p>
           </div>
           <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 max-w-3xl mx-auto">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Vehicle Make</label>
-                <select
-                  value={selectedMake}
-                  onChange={(e) => { setSelectedMake(e.target.value); setSelectedModel(""); }}
-                  className="input-field"
-                >
-                  <option value="">Select make...</option>
-                  {VEHICLE_MAKES.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Vehicle Model</label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="input-field"
-                  disabled={!selectedMake}
-                >
-                  <option value="">Select model...</option>
-                  {(VEHICLE_MODELS[selectedMake] || []).map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="border-t border-brand-border pt-4 mt-2">
-              <p className="text-xs text-brand-gray text-center mb-3">— or search by tyre size —</p>
+            <div>
+              <p className="text-xs text-brand-gray text-center mb-3">Search by tyre size</p>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Width</label>
-                  <select className="input-field text-sm">
-                    <option>175</option><option>185</option><option>195</option>
-                    <option selected>205</option><option>215</option><option>225</option>
-                    <option>235</option><option>245</option><option>255</option><option>265</option>
+                  <select value={widthValue} onChange={(e) => setSelectedWidth(e.target.value)} className="input-field text-sm">
+                    {tyreWidths.map((width) => <option key={width} value={width}>{width}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Profile</label>
-                  <select className="input-field text-sm">
-                    <option>35</option><option>40</option><option>45</option>
-                    <option selected>55</option><option>60</option><option>65</option>
+                  <select value={profileValue} onChange={(e) => setSelectedProfile(e.target.value)} className="input-field text-sm">
+                    {tyreProfiles.map((profile) => <option key={profile} value={profile}>{profile}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Rim (inch)</label>
-                  <select className="input-field text-sm">
-                    <option>15</option><option selected>16</option><option>17</option>
-                    <option>18</option><option>19</option><option>20</option>
+                  <select value={rimValue} onChange={(e) => setSelectedRim(e.target.value)} className="input-field text-sm">
+                    {tyreRims.map((rim) => <option key={rim} value={rim}>{rim}</option>)}
                   </select>
                 </div>
               </div>
             </div>
-            <button onClick={() => navigate("shop")} className="btn-primary w-full justify-center mt-5 text-base py-3">
+            <button onClick={() => navigate("shop", undefined, `${widthValue}/${profileValue} R${rimValue}`)} disabled={!widthValue || !profileValue || !rimValue} className="btn-primary w-full justify-center mt-5 text-base py-3 disabled:opacity-50">
               Search Tyres <ChevronRight size={18} />
             </button>
           </div>

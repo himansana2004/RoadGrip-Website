@@ -1,519 +1,534 @@
-import { useState } from "react";
-import { products } from "../data/products";
-import StarRating from "../components/StarRating";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useApp } from "../context/AppContext";
+import type { Product } from "../data/products";
 import {
-  BarChart as BarChartIcon, Home, Package, Users, Tag,
-  Settings, AlertTriangle, TrendingUp, ShoppingCart, Edit, Trash, Eye, Plus, X
+  CreditCard,
+  Edit,
+  Package,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash,
+  TrendingUp,
+  Users,
+  X,
 } from "../components/Icons";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
-} from "recharts";
+  api,
+  type AdminOrder,
+  type AdminOrderStatus,
+  type AdminUser,
+} from "../lib/api";
 
-type AdminTab = "dashboard" | "products" | "orders" | "customers" | "reviews" | "reports" | "settings";
+type AdminTab = "overview" | "products" | "categories" | "brands" | "orders" | "users";
+type CatalogKind = "brand" | "category";
 
-const SALES_DATA = [
-  { month: "Feb", revenue: 12400, orders: 89 },
-  { month: "Mar", revenue: 18200, orders: 134 },
-  { month: "Apr", revenue: 15800, orders: 112 },
-  { month: "May", revenue: 22600, orders: 167 },
-  { month: "Jun", revenue: 28400, orders: 198 },
-  { month: "Jul", revenue: 24900, orders: 182 },
-  { month: "Aug", revenue: 31200, orders: 221 },
-];
-
-const ORDERS = [
-  { id: "RG-2026-48291", customer: "James Thornton", date: "20 Aug 2026", items: 2, total: 379.98, status: "Delivered" },
-  { id: "RG-2026-48156", customer: "Sarah Mitchell", date: "19 Aug 2026", items: 4, total: 759.96, status: "In Transit" },
-  { id: "RG-2026-48044", customer: "Ravi Patel", date: "18 Aug 2026", items: 1, total: 219.99, status: "Processing" },
-  { id: "RG-2026-47932", customer: "Emma Chen", date: "17 Aug 2026", items: 2, total: 499.98, status: "Delivered" },
-  { id: "RG-2026-47816", customer: "Tom Whitfield", date: "16 Aug 2026", items: 1, total: 129.99, status: "Cancelled" },
-  { id: "RG-2026-47701", customer: "Priya Sharma", date: "15 Aug 2026", items: 3, total: 639.97, status: "Delivered" },
-];
-
-const CUSTOMERS = [
-  { id: "C-1042", name: "James Thornton", email: "j.thornton@email.com", orders: 7, spent: 1849.93, joined: "Jan 2025" },
-  { id: "C-1041", name: "Sarah Mitchell", email: "s.mitchell@email.co.uk", orders: 3, spent: 949.95, joined: "Mar 2025" },
-  { id: "C-1040", name: "Ravi Patel", email: "ravi.p@gmail.com", orders: 5, spent: 1249.95, joined: "Dec 2024" },
-  { id: "C-1039", name: "Emma Chen", email: "emma.chen@outlook.com", orders: 2, spent: 499.98, joined: "May 2026" },
-  { id: "C-1038", name: "Tom Whitfield", email: "tom.w@email.com", orders: 9, spent: 2119.91, joined: "Aug 2024" },
-];
-
-const STATUS_STYLES: Record<string, string> = {
-  Delivered: "badge-green",
-  "In Transit": "badge-yellow",
-  Processing: "badge-gray",
-  Cancelled: "badge-red",
+const emptyProduct: Omit<Product, "id"> = {
+  name: "",
+  brand: "",
+  category: "Car",
+  price: 0,
+  rating: 0,
+  reviewCount: 0,
+  size: "",
+  width: 0,
+  aspectRatio: 0,
+  rimDiameter: 0,
+  stock: 0,
+  image: "",
+  description: "",
+  loadIndex: "",
+  speedRating: "",
 };
 
-const CATEGORY_SALES = [
-  { name: "Car", sales: 1240 },
-  { name: "SUV", sales: 640 },
-  { name: "Bike", sales: 280 },
-  { name: "Van", sales: 380 },
+const orderStatuses: AdminOrderStatus[] = [
+  "Pending Payment",
+  "Processing",
+  "In Transit",
+  "Delivered",
+  "Cancelled",
 ];
 
+const navItems: { id: AdminTab; label: string; icon: typeof Package }[] = [
+  { id: "overview", label: "Dashboard overview", icon: TrendingUp },
+  { id: "products", label: "Products", icon: Package },
+  { id: "categories", label: "Categories & vehicle types", icon: Package },
+  { id: "brands", label: "Brands", icon: Package },
+  { id: "orders", label: "Orders", icon: CreditCard },
+  { id: "users", label: "Users", icon: Users },
+];
+
+function formatLkr(amount: number) {
+  return `LKR ${amount.toLocaleString("en-LK", { maximumFractionDigits: 0 })}`;
+}
+
 export default function AdminPage() {
-  const [tab, setTab] = useState<AdminTab>("dashboard");
-  const [searchOrder, setSearchOrder] = useState("");
-  const [showAddProduct, setShowAddProduct] = useState(false);
+  const { products, refreshProducts } = useApp();
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState<Omit<Product, "id">>(emptyProduct);
+  const [productSearch, setProductSearch] = useState("");
+  const [orderSearch, setOrderSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [categorySearch, setCategorySearch] = useState("");
+  const [brandSearch, setBrandSearch] = useState("");
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
+  const [newCategory, setNewCategory] = useState("");
+  const [newBrand, setNewBrand] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [catalogBusy, setCatalogBusy] = useState<string | null>(null);
 
-  const NAV_ITEMS: { id: AdminTab; label: string; icon: typeof Home }[] = [
-    { id: "dashboard", label: "Dashboard", icon: Home },
-    { id: "products", label: "Products", icon: Package },
-    { id: "orders", label: "Orders", icon: ShoppingCart },
-    { id: "customers", label: "Customers", icon: Users },
-    { id: "reviews", label: "Reviews", icon: Tag },
-    { id: "reports", label: "Reports", icon: BarChartIcon },
-    { id: "settings", label: "Settings", icon: Settings },
-  ];
+  function fetchAdminData() {
+    return Promise.all([
+        api.getAdminOrders(),
+        api.getAdminUsers(),
+        api.getCatalog("category"),
+        api.getCatalog("brand"),
+      ]);
+  }
 
-  const filteredOrders = ORDERS.filter(
-    (o) =>
-      o.id.toLowerCase().includes(searchOrder.toLowerCase()) ||
-      o.customer.toLowerCase().includes(searchOrder.toLowerCase())
-  );
+  function applyAdminData([nextOrders, nextUsers, nextCategories, nextBrands]: Awaited<ReturnType<typeof fetchAdminData>>) {
+      setOrders(nextOrders);
+      setUsers(nextUsers);
+      setCategories(nextCategories);
+      setBrands(nextBrands);
+      setError("");
+  }
+
+  async function reloadAdminData() {
+    setLoading(true);
+    try {
+      applyAdminData(await fetchAdminData());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Could not load admin data");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    fetchAdminData()
+      .then((data) => {
+        if (active) applyAdminData(data);
+      })
+      .catch((loadError: unknown) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : "Could not load admin data");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const visibleProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+    if (!query) return products;
+    return products.filter((product) =>
+      [product.name, product.brand, product.category, product.size]
+        .some((value) => value.toLowerCase().includes(query))
+    );
+  }, [products, productSearch]);
+
+  const visibleOrders = useMemo(() => {
+    const query = orderSearch.trim().toLowerCase();
+    if (!query) return orders;
+    return orders.filter((order) =>
+      [order.id, order.customerName, order.customerEmail, order.status, order.paymentMethod]
+        .some((value) => value.toLowerCase().includes(query))
+    );
+  }, [orders, orderSearch]);
+
+  const visibleUsers = useMemo(() => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) return users;
+    return users.filter((user) =>
+      [`${user.firstName} ${user.lastName}`, user.email, user.phone, user.role]
+        .some((value) => value.toLowerCase().includes(query))
+    );
+  }, [users, userSearch]);
+
+  const paidRevenue = orders
+    .filter((order) => order.paymentStatus === "Paid" || (order.status === "Delivered" && order.paymentStatus === "Not Required"))
+    .reduce((total, order) => total + order.total, 0);
+  const pendingOrders = orders.filter((order) => order.status === "Pending Payment" || order.status === "Processing").length;
+  const paymentMethods = useMemo(() => {
+    const totals = new Map<string, { count: number; amount: number }>();
+    orders.forEach((order) => {
+      const method = order.paymentMethod || "Unspecified";
+      const item = totals.get(method) || { count: 0, amount: 0 };
+      item.count += 1;
+      item.amount += order.total;
+      totals.set(method, item);
+    });
+    return [...totals.entries()]
+      .map(([name, value]) => ({ name, ...value }))
+      .sort((a, b) => b.count - a.count);
+  }, [orders]);
+  const paymentTotal = paymentMethods.reduce((total, method) => total + method.count, 0);
+  const paymentColors = ["#B22222", "#111111", "#7f1d1d", "#6b7280", "#d97706", "#9ca3af"];
+  let paymentProgress = 0;
+  const paymentGradient = paymentMethods.length
+    ? `conic-gradient(${paymentMethods.map((method, index) => {
+      const start = paymentProgress;
+      paymentProgress += paymentTotal ? method.count / paymentTotal * 100 : 0;
+      return `${paymentColors[index % paymentColors.length]} ${start}% ${paymentProgress}%`;
+    }).join(", ")})`
+    : "conic-gradient(#E0E0E0 0% 100%)";
+
+  const categoryDistribution = useMemo(() => {
+    const counts = new Map<string, number>();
+    products.forEach((product) => counts.set(product.category, (counts.get(product.category) || 0) + 1));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [products]);
+  const maxCategoryCount = Math.max(...categoryDistribution.map(([, count]) => count), 1);
+
+  function openCreate() {
+    setError("");
+    setForm(emptyProduct);
+    setEditing(null);
+    setFormOpen(true);
+  }
+
+  function openEdit(product: Product) {
+    setError("");
+    setForm(product);
+    setEditing(product);
+    setFormOpen(true);
+  }
+
+  async function saveProduct(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      if (editing) await api.updateProduct({ ...form, id: editing.id });
+      else await api.createProduct(form);
+      await Promise.all([refreshProducts(), reloadAdminData()]);
+      setEditing(null);
+      setFormOpen(false);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save product");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeProduct(id: number) {
+    if (!window.confirm("Delete this product?")) return;
+    try {
+      await api.deleteProduct(id);
+      await refreshProducts();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Could not delete product");
+    }
+  }
+
+  function setField<K extends keyof Omit<Product, "id">>(field: K, value: Omit<Product, "id">[K]) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function updateOrderStatus(orderId: string, status: AdminOrderStatus) {
+    setBusyOrderId(orderId);
+    setError("");
+    try {
+      await api.updateAdminOrder(orderId, status);
+      setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status } : order));
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Could not update order");
+    } finally {
+      setBusyOrderId(null);
+    }
+  }
+
+  async function updateUserRole(userId: string, role: AdminUser["role"]) {
+    setBusyUserId(userId);
+    setError("");
+    try {
+      await api.setAdminUserRole(userId, role);
+      setUsers((current) => current.map((user) => user.id === userId ? { ...user, role } : user));
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Could not update user role");
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function addCatalog(kind: CatalogKind) {
+    const value = kind === "category" ? newCategory.trim() : newBrand.trim();
+    if (!value) return;
+    setCatalogBusy(`${kind}:${value}`);
+    setError("");
+    try {
+      await api.createCatalogEntry(kind, value);
+      if (kind === "category") {
+        setCategories(await api.getCatalog(kind));
+        setNewCategory("");
+      } else {
+        setBrands(await api.getCatalog(kind));
+        setNewBrand("");
+      }
+    } catch (catalogError) {
+      setError(catalogError instanceof Error ? catalogError.message : "Could not add catalog entry");
+    } finally {
+      setCatalogBusy(null);
+    }
+  }
+
+  async function renameCatalog(kind: CatalogKind, oldName: string) {
+    const updatedName = window.prompt(`Rename ${oldName} to:`, oldName)?.trim();
+    if (!updatedName || updatedName === oldName) return;
+    setCatalogBusy(`${kind}:${oldName}`);
+    setError("");
+    try {
+      await api.renameCatalogEntry(kind, oldName, updatedName);
+      if (kind === "category") {
+        setCategories(await api.getCatalog(kind));
+        await refreshProducts();
+      } else {
+        setBrands(await api.getCatalog(kind));
+        await refreshProducts();
+      }
+    } catch (catalogError) {
+      setError(catalogError instanceof Error ? catalogError.message : "Could not rename catalog entry");
+    } finally {
+      setCatalogBusy(null);
+    }
+  }
+
+  async function removeCatalog(kind: CatalogKind, name: string) {
+    if (!window.confirm(`Delete "${name}"? Entries used by products cannot be removed.`)) return;
+    setCatalogBusy(`${kind}:${name}`);
+    setError("");
+    try {
+      await api.deleteCatalogEntry(kind, name);
+      if (kind === "category") setCategories(await api.getCatalog(kind));
+      else setBrands(await api.getCatalog(kind));
+    } catch (catalogError) {
+      setError(catalogError instanceof Error ? catalogError.message : "Could not delete catalog entry");
+    } finally {
+      setCatalogBusy(null);
+    }
+  }
+
+  const filteredCatalog = (kind: CatalogKind) => {
+    const entries = kind === "category" ? categories : brands;
+    const query = (kind === "category" ? categorySearch : brandSearch).trim().toLowerCase();
+    return query ? entries.filter((entry) => entry.toLowerCase().includes(query)) : entries;
+  };
 
   return (
-    <div className="flex h-screen bg-brand-light overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-56 bg-brand-black flex flex-col shrink-0">
-        <div className="p-5 border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-brand-red rounded-full flex items-center justify-center">
-              <span className="text-white font-display font-900 text-xs">RG</span>
-            </div>
-            <span className="font-display font-800 text-white text-base">
-              Road<span className="text-brand-red">Grip</span>
-            </span>
+    <div className="min-h-screen bg-brand-light text-brand-black">
+      <header className="border-b border-brand-border bg-brand-black px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="font-display text-xl font-extrabold text-white">Road<span className="text-brand-red">Grip</span> Admin</h1>
+            <p className="mt-1 text-xs text-gray-300">Store operations and analytics</p>
           </div>
-          <p className="text-gray-500 text-xs mt-0.5 font-body">Admin Panel</p>
+          <button onClick={() => void reloadAdminData()} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-gray-600 px-3 py-2 text-sm text-gray-200 hover:border-brand-red hover:text-white disabled:opacity-50">
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Refresh data
+          </button>
         </div>
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={`sidebar-link w-full ${tab === id ? "active" : ""}`}
-            >
-              <Icon size={16} />
-              {label}
+      </header>
+
+      <div className="mx-auto flex max-w-[1500px] flex-col gap-5 px-4 py-5 sm:px-6 lg:flex-row">
+        <aside className="flex shrink-0 gap-2 overflow-x-auto lg:w-60 lg:flex-col lg:overflow-visible">
+          {navItems.map(({ id, label, icon: Icon }) => (
+            <button key={id} onClick={() => setActiveTab(id)} className={`flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${activeTab === id ? "bg-brand-red font-semibold text-white" : "text-brand-gray hover:bg-brand-light hover:text-brand-black"}`}>
+              <Icon size={17} /> {label}
             </button>
           ))}
-        </nav>
-        <div className="p-4 border-t border-white/10">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-brand-red/30 rounded-full flex items-center justify-center text-white font-display font-700 text-xs">
-              AD
-            </div>
-            <div>
-              <p className="text-white text-xs font-display font-600">Admin User</p>
-              <p className="text-gray-500 text-xs">admin@roadgrip.co.uk</p>
-            </div>
-          </div>
-        </div>
-      </aside>
+        </aside>
 
-      {/* Main */}
-      <main className="flex-1 overflow-y-auto">
-        {/* Top bar */}
-        <header className="bg-white border-b border-brand-border px-6 py-3.5 flex items-center justify-between sticky top-0 z-10">
-          <div>
-            <h1 className="font-display font-700 text-brand-black text-lg capitalize">{tab}</h1>
-            <p className="text-brand-gray text-xs">Road Grip Tyre Shop · Admin</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 bg-red-50 text-brand-red px-3 py-1.5 rounded-lg text-xs font-display font-600">
-              <AlertTriangle size={13} />
-              3 Low Stock Alerts
-            </div>
-            <button onClick={() => setShowAddProduct(true)} className="btn-primary text-sm py-2 px-4">
-              <Plus size={15} /> Add Product
-            </button>
-          </div>
-        </header>
+        <main className="min-w-0 flex-1 space-y-5">
+          {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-brand-red">{error}</div>}
 
-        <div className="p-6">
-          {/* Dashboard */}
-          {tab === "dashboard" && (
-            <div className="space-y-6">
-              {/* Summary cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  { label: "Total Revenue (Aug)", value: "£31,200", change: "+24.7%", up: true, icon: TrendingUp },
-                  { label: "Total Orders", value: "221", change: "+21.4%", up: true, icon: ShoppingCart },
-                  { label: "Total Customers", value: "1,842", change: "+8.2%", up: true, icon: Users },
-                  { label: "Low Stock Items", value: "3", change: "Restock needed", up: false, icon: AlertTriangle },
-                ].map(({ label, value, change, up, icon: Icon }) => (
-                  <div key={label} className="bg-white rounded-2xl p-5 shadow-sm">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-brand-gray text-xs font-display font-600 uppercase tracking-wide">{label}</p>
-                        <p className="font-display font-800 text-brand-black text-2xl mt-1">{value}</p>
-                        <p className={`text-xs mt-1 font-display font-600 ${up ? "text-green-600" : "text-brand-red"}`}>{change}</p>
-                      </div>
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${up ? "bg-green-100" : "bg-red-100"}`}>
-                        <Icon size={18} className={up ? "text-green-600" : "text-brand-red"} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                {/* Revenue chart */}
-                <div className="lg:col-span-2 bg-white rounded-2xl p-5 shadow-sm">
-                  <h3 className="font-display font-700 text-brand-black mb-4">Revenue & Orders (2026)</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <AreaChart data={SALES_DATA} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#B22222" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="#B22222" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F2F2F2" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fontFamily: "Inter" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fontFamily: "Inter" }} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: "8px", border: "1px solid #E0E0E0", fontSize: 12, fontFamily: "Poppins" }}
-                        formatter={(val, name) => [name === "revenue" ? `£${Number(val).toLocaleString()}` : val, name === "revenue" ? "Revenue" : "Orders"]}
-                      />
-                      <Area type="monotone" dataKey="revenue" stroke="#B22222" strokeWidth={2} fill="url(#revGrad)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Category bar chart */}
-                <div className="bg-white rounded-2xl p-5 shadow-sm">
-                  <h3 className="font-display font-700 text-brand-black mb-4">Sales by Category</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={CATEGORY_SALES} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F2F2F2" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fontSize: 11, fontFamily: "Inter" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fontFamily: "Inter" }} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: "8px", border: "1px solid #E0E0E0", fontSize: 12, fontFamily: "Poppins" }}
-                      />
-                      <Bar dataKey="sales" fill="#B22222" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Recent orders */}
-              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-brand-border flex items-center justify-between">
-                  <h3 className="font-display font-700 text-brand-black">Recent Orders</h3>
-                  <button onClick={() => setTab("orders")} className="text-xs text-brand-red font-display font-600 hover:underline">View all</button>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-brand-light">
-                        {["Order ID", "Customer", "Date", "Items", "Total", "Status", "Actions"].map((h) => (
-                          <th key={h} className="text-left py-3 px-4 font-display font-600 text-brand-gray text-xs uppercase tracking-wide">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ORDERS.slice(0, 5).map((order) => (
-                        <tr key={order.id} className="border-b border-brand-border hover:bg-brand-light transition">
-                          <td className="py-3 px-4 font-display font-600 text-brand-black text-xs">{order.id}</td>
-                          <td className="py-3 px-4 text-brand-gray text-xs">{order.customer}</td>
-                          <td className="py-3 px-4 text-brand-gray text-xs">{order.date}</td>
-                          <td className="py-3 px-4 text-brand-gray text-xs">{order.items}</td>
-                          <td className="py-3 px-4 font-display font-700 text-brand-black text-xs">£{order.total.toFixed(2)}</td>
-                          <td className="py-3 px-4"><span className={`badge ${STATUS_STYLES[order.status]}`}>{order.status}</span></td>
-                          <td className="py-3 px-4">
-                            <div className="flex gap-1.5">
-                              <button className="p-1.5 rounded-lg text-brand-gray hover:bg-brand-light hover:text-brand-black transition"><Eye size={14} /></button>
-                              <button className="p-1.5 rounded-lg text-brand-gray hover:bg-brand-light hover:text-brand-black transition"><Edit size={14} /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Products */}
-          {tab === "products" && (
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-brand-border flex flex-wrap items-center justify-between gap-3">
-                <h3 className="font-display font-700 text-brand-black">All Products</h3>
-                <button onClick={() => setShowAddProduct(true)} className="btn-primary text-sm py-2 px-4">
-                  <Plus size={15} /> Add Product
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-brand-light">
-                      {["Product", "Brand", "Category", "Size", "Price", "Stock", "Rating", "Actions"].map((h) => (
-                        <th key={h} className="text-left py-3 px-4 font-display font-600 text-brand-gray text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map((p) => (
-                      <tr key={p.id} className="border-b border-brand-border hover:bg-brand-light transition">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-10 h-10 bg-brand-light rounded-lg overflow-hidden shrink-0">
-                              <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
-                            </div>
-                            <span className="font-display font-600 text-brand-black text-xs whitespace-nowrap">{p.name}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-brand-gray text-xs">{p.brand}</td>
-                        <td className="py-3 px-4 text-brand-gray text-xs">{p.category}</td>
-                        <td className="py-3 px-4 text-brand-gray text-xs font-body">{p.size}</td>
-                        <td className="py-3 px-4 font-display font-700 text-brand-red text-xs">£{p.price.toFixed(2)}</td>
-                        <td className="py-3 px-4">
-                          <span className={`badge ${p.stock <= 10 ? "badge-red" : p.stock <= 20 ? "badge-yellow" : "badge-green"}`}>
-                            {p.stock}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <StarRating rating={p.rating} size="sm" />
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex gap-1.5">
-                            <button className="p-1.5 rounded-lg text-brand-gray hover:bg-brand-light hover:text-brand-black transition"><Eye size={13} /></button>
-                            <button className="p-1.5 rounded-lg text-brand-gray hover:bg-brand-light hover:text-brand-black transition"><Edit size={13} /></button>
-                            <button className="p-1.5 rounded-lg text-brand-gray hover:bg-red-50 hover:text-brand-red transition"><Trash size={13} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Orders */}
-          {tab === "orders" && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap gap-3">
-                <input
-                  value={searchOrder}
-                  onChange={(e) => setSearchOrder(e.target.value)}
-                  placeholder="Search orders or customers..."
-                  className="input-field max-w-72"
-                />
-                <select className="input-field max-w-40">
-                  <option>All Status</option>
-                  <option>Delivered</option>
-                  <option>In Transit</option>
-                  <option>Processing</option>
-                  <option>Cancelled</option>
-                </select>
-              </div>
-              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-brand-light">
-                        {["Order ID", "Customer", "Date", "Items", "Total", "Status", "Actions"].map((h) => (
-                          <th key={h} className="text-left py-3 px-4 font-display font-600 text-brand-gray text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredOrders.map((order) => (
-                        <tr key={order.id} className="border-b border-brand-border hover:bg-brand-light transition">
-                          <td className="py-3.5 px-4 font-display font-600 text-brand-black text-xs">{order.id}</td>
-                          <td className="py-3.5 px-4 text-brand-gray text-xs">{order.customer}</td>
-                          <td className="py-3.5 px-4 text-brand-gray text-xs whitespace-nowrap">{order.date}</td>
-                          <td className="py-3.5 px-4 text-brand-gray text-xs">{order.items}</td>
-                          <td className="py-3.5 px-4 font-display font-700 text-brand-black text-xs">£{order.total.toFixed(2)}</td>
-                          <td className="py-3.5 px-4"><span className={`badge ${STATUS_STYLES[order.status]}`}>{order.status}</span></td>
-                          <td className="py-3.5 px-4">
-                            <div className="flex gap-1.5">
-                              <button className="p-1.5 rounded-lg text-brand-gray hover:text-brand-black transition"><Eye size={14} /></button>
-                              <button className="p-1.5 rounded-lg text-brand-gray hover:text-brand-black transition"><Edit size={14} /></button>
-                              <button className="p-1.5 rounded-lg text-brand-gray hover:text-brand-red transition"><Trash size={14} /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Customers */}
-          {tab === "customers" && (
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-brand-light">
-                      {["Customer ID", "Name", "Email", "Orders", "Total Spent", "Member Since", "Actions"].map((h) => (
-                        <th key={h} className="text-left py-3 px-4 font-display font-600 text-brand-gray text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {CUSTOMERS.map((c) => (
-                      <tr key={c.id} className="border-b border-brand-border hover:bg-brand-light transition">
-                        <td className="py-3.5 px-4 font-display font-600 text-brand-gray text-xs">{c.id}</td>
-                        <td className="py-3.5 px-4 font-display font-600 text-brand-black text-xs">{c.name}</td>
-                        <td className="py-3.5 px-4 text-brand-gray text-xs">{c.email}</td>
-                        <td className="py-3.5 px-4 text-brand-gray text-xs">{c.orders}</td>
-                        <td className="py-3.5 px-4 font-display font-700 text-green-600 text-xs">£{c.spent.toFixed(2)}</td>
-                        <td className="py-3.5 px-4 text-brand-gray text-xs">{c.joined}</td>
-                        <td className="py-3.5 px-4">
-                          <div className="flex gap-1.5">
-                            <button className="p-1.5 rounded-lg text-brand-gray hover:text-brand-black transition"><Eye size={14} /></button>
-                            <button className="p-1.5 rounded-lg text-brand-gray hover:text-brand-black transition"><Edit size={14} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {tab === "reviews" && (
-            <div className="space-y-4">
-              {[
-                { author: "James Thornton", product: "Michelin Pilot Sport 4S", rating: 5, date: "20 Aug 2026", comment: "Absolutely superb tyre. Transformed my BMW M3's handling.", status: "Published" },
-                { author: "Sarah Mitchell", product: "Continental SportContact 7", rating: 4, date: "18 Aug 2026", comment: "Great grip in wet conditions. Slightly noisy at motorway speeds.", status: "Published" },
-                { author: "Anonymous", product: "Goodyear Eagle F1", rating: 2, date: "17 Aug 2026", comment: "Tyre deflated after 3 weeks. Very disappointed.", status: "Flagged" },
-              ].map((r) => (
-                <div key={r.author + r.date} className="bg-white rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-display font-700 text-brand-black text-sm">{r.author}</p>
-                      <span className="text-xs text-brand-gray">·</span>
-                      <p className="text-xs text-brand-gray">{r.product}</p>
-                      <span className="text-xs text-brand-gray">·</span>
-                      <p className="text-xs text-brand-gray">{r.date}</p>
-                    </div>
-                    <StarRating rating={r.rating} size="sm" />
-                    <p className="text-sm text-brand-gray mt-2">{r.comment}</p>
-                  </div>
-                  <div className="flex items-start gap-2 shrink-0">
-                    <span className={`badge ${r.status === "Published" ? "badge-green" : "badge-red"}`}>{r.status}</span>
-                    <button className="p-1.5 rounded-lg text-brand-gray hover:text-brand-black transition"><Edit size={14} /></button>
-                    <button className="p-1.5 rounded-lg text-brand-gray hover:text-brand-red transition"><Trash size={14} /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {tab === "reports" && (
-            <div className="space-y-5">
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
-                <h3 className="font-display font-700 text-brand-black mb-4">Monthly Revenue Trend</h3>
-                <ResponsiveContainer width="100%" height={280}>
-                  <AreaChart data={SALES_DATA} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="revGrad2" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#B22222" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#B22222" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F2F2F2" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ borderRadius: "8px", fontSize: 12 }} />
-                    <Legend />
-                    <Area type="monotone" dataKey="revenue" name="Revenue (£)" stroke="#B22222" strokeWidth={2} fill="url(#revGrad2)" />
-                    <Area type="monotone" dataKey="orders" name="Orders" stroke="#111111" strokeWidth={2} fill="none" strokeDasharray="4 2" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {tab === "settings" && (
-            <div className="bg-white rounded-2xl p-6 shadow-sm max-w-lg">
-              <h3 className="font-display font-700 text-brand-black mb-5">Store Settings</h3>
-              <div className="space-y-4">
-                {[
-                  { label: "Store Name", val: "Road Grip Tyre Shop" },
-                  { label: "Contact Email", val: "info@roadgrip.co.uk" },
-                  { label: "Phone Number", val: "0800 123 4567" },
-                  { label: "Free Delivery Threshold (£)", val: "150" },
-                ].map(({ label, val }) => (
-                  <div key={label}>
-                    <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">{label}</label>
-                    <input defaultValue={val} className="input-field" />
-                  </div>
-                ))}
-                <div className="flex items-center gap-3 pt-2">
-                  <input type="checkbox" id="maintenance" className="w-4 h-4 rounded accent-brand-red" />
-                  <label htmlFor="maintenance" className="text-sm text-brand-gray">Enable maintenance mode</label>
-                </div>
-                <button className="btn-primary mt-2">Save Settings</button>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
-
-      {/* Add Product Modal */}
-      {showAddProduct && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-5 border-b border-brand-border">
-              <h3 className="font-display font-700 text-brand-black">Add New Product</h3>
-              <button onClick={() => setShowAddProduct(false)} className="text-brand-gray hover:text-brand-black transition">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              {[
-                { label: "Product Name", placeholder: "e.g. Pilot Sport 5" },
-                { label: "Brand", placeholder: "e.g. Michelin" },
-              ].map(({ label, placeholder }) => (
-                <div key={label}>
-                  <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">{label}</label>
-                  <input className="input-field" placeholder={placeholder} />
-                </div>
-              ))}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Category</label>
-                  <select className="input-field">
-                    <option>Car</option><option>SUV</option><option>Bike</option><option>Van</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Price (£)</label>
-                  <input className="input-field" placeholder="149.99" type="number" />
-                </div>
-                <div>
-                  <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Tyre Size</label>
-                  <input className="input-field" placeholder="225/45 R17" />
-                </div>
-                <div>
-                  <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Stock</label>
-                  <input className="input-field" placeholder="24" type="number" />
-                </div>
-              </div>
+          {activeTab === "overview" && (
+            <>
               <div>
-                <label className="text-xs font-display font-600 text-brand-gray uppercase tracking-wide mb-1.5 block">Description</label>
-                <textarea className="input-field min-h-20 resize-none" placeholder="Product description..." />
+                <h2 className="font-display text-2xl font-bold">Dashboard Overview</h2>
+                <p className="mt-1 text-sm text-brand-gray">Live sales, orders and catalog metrics</p>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddProduct(false)} className="btn-outline flex-1 justify-center text-sm py-2.5">Cancel</button>
-                <button onClick={() => setShowAddProduct(false)} className="btn-primary flex-1 justify-center text-sm py-2.5">Add Product</button>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  { label: "Paid revenue", value: formatLkr(paidRevenue), icon: TrendingUp, color: "text-brand-red", tone: "bg-red-50" },
+                  { label: "Total orders", value: orders.length.toLocaleString(), icon: Package, color: "text-brand-black", tone: "bg-gray-100" },
+                  { label: "Pending / processing", value: pendingOrders.toLocaleString(), icon: RefreshCw, color: "text-amber-700", tone: "bg-amber-50" },
+                  { label: "Customers", value: users.length.toLocaleString(), icon: Users, color: "text-brand-gray", tone: "bg-gray-100" },
+                ].map(({ label, value, icon: Icon, color, tone }) => (
+                  <div key={label} className="rounded-xl border border-brand-border bg-white p-4 shadow-sm">
+                    <div className={`mb-4 flex h-9 w-9 items-center justify-center rounded-lg ${tone} ${color}`}><Icon size={18} /></div>
+                    <p className="text-2xl font-bold text-brand-black">{loading ? "—" : value}</p>
+                    <p className="mt-1 text-xs text-brand-gray">{label}</p>
+                  </div>
+                ))}
               </div>
+              <div className="grid gap-5 xl:grid-cols-[2fr_1fr]">
+                <section className="rounded-xl border border-brand-border bg-white p-5 shadow-sm">
+                  <div className="mb-5">
+                    <h3 className="font-semibold text-brand-black">Payment Methods</h3>
+                    <p className="text-xs text-brand-gray">Order payment distribution</p>
+                  </div>
+                  <div className="flex flex-col items-center gap-6 sm:flex-row">
+                    <div className="h-40 w-40 shrink-0 rounded-full" style={{ background: paymentGradient }} aria-label="Payment method distribution">
+                      <div className="m-9 flex h-22 w-22 items-center justify-center rounded-full bg-white text-center text-xs text-brand-gray">
+                        {paymentTotal} orders
+                      </div>
+                    </div>
+                    <div className="w-full space-y-3">
+                      {paymentMethods.length ? paymentMethods.map((method, index) => (
+                        <div key={method.name} className="flex items-center gap-2 text-sm">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: paymentColors[index % paymentColors.length] }} />
+                          <span className="min-w-0 flex-1 truncate text-brand-gray">{method.name}</span>
+                          <span className="text-gray-500">{paymentTotal ? Math.round(method.count / paymentTotal * 100) : 0}%</span>
+                          <span className="w-24 text-right font-medium text-brand-black">{formatLkr(method.amount)}</span>
+                        </div>
+                      )) : <p className="text-sm text-brand-gray">No order payment data yet.</p>}
+                    </div>
+                  </div>
+                </section>
+                <section className="rounded-xl border border-brand-border bg-white p-5 shadow-sm">
+                  <h3 className="font-semibold text-brand-black">Catalog health</h3>
+                  <p className="mb-5 text-xs text-brand-gray">Products by vehicle type</p>
+                  {categoryDistribution.length ? <div className="space-y-4">
+                    {categoryDistribution.map(([category, count]) => (
+                      <div key={category}>
+                        <div className="mb-1 flex justify-between text-xs"><span className="text-brand-gray">{category}</span><span className="text-gray-500">{count}</span></div>
+                        <div className="h-2 overflow-hidden rounded-full bg-brand-light"><div className="h-full rounded-full bg-brand-red" style={{ width: `${count / maxCategoryCount * 100}%` }} /></div>
+                      </div>
+                    ))}
+                  </div> : <p className="text-sm text-brand-gray">No products in the catalog yet.</p>}
+                </section>
+              </div>
+            </>
+          )}
+
+          {activeTab === "products" && (
+            <section className="overflow-hidden rounded-xl border border-brand-border bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border p-4">
+                <div><h2 className="font-semibold text-brand-black">Product management</h2><p className="text-xs text-brand-gray">{products.length} products in catalog</p></div>
+                <button onClick={openCreate} className="btn-primary rounded-lg px-4 py-2 text-sm"><Plus size={15} /> Add product</button>
+              </div>
+              <div className="border-b border-brand-border p-4">
+                <label className="relative block">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Search name, brand, vehicle type or size..." className="input-field py-2.5 pl-9" />
+                </label>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-brand-light text-xs uppercase text-brand-gray"><tr>{["Product", "Brand", "Vehicle type", "Size", "Price", "Stock", "Actions"].map((head) => <th key={head} className="whitespace-nowrap px-4 py-3">{head}</th>)}</tr></thead>
+                  <tbody>{visibleProducts.map((product) => (
+                    <tr key={product.id} className="border-t border-brand-border hover:bg-brand-light/60">
+                      <td className="px-4 py-3 font-medium text-brand-black">{product.name}</td><td className="px-4 py-3 text-brand-gray">{product.brand}</td><td className="px-4 py-3 text-brand-gray">{product.category}</td><td className="px-4 py-3 text-brand-gray">{product.size}</td><td className="px-4 py-3 font-semibold text-brand-red">{formatLkr(product.price)}</td><td className="px-4 py-3 text-brand-gray">{product.stock}</td>
+                      <td className="px-4 py-3"><div className="flex gap-3"><button onClick={() => openEdit(product)} aria-label={`Edit ${product.name}`} className="text-brand-gray hover:text-brand-black"><Edit size={15} /></button><button onClick={() => void removeProduct(product.id)} aria-label={`Delete ${product.name}`} className="text-brand-gray hover:text-brand-red"><Trash size={15} /></button></div></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                {!visibleProducts.length && <p className="p-8 text-center text-sm text-brand-gray">No matching products.</p>}
+              </div>
+            </section>
+          )}
+
+          {(activeTab === "categories" || activeTab === "brands") && (() => {
+            const kind: CatalogKind = activeTab === "categories" ? "category" : "brand";
+            const title = kind === "category" ? "Categories & vehicle types" : "Brands";
+            const list = filteredCatalog(kind);
+            const searchValue = kind === "category" ? categorySearch : brandSearch;
+            const setSearchValue = kind === "category" ? setCategorySearch : setBrandSearch;
+            const newValue = kind === "category" ? newCategory : newBrand;
+            const setNewValue = kind === "category" ? setNewCategory : setNewBrand;
+            return (
+              <section className="rounded-xl border border-brand-border bg-white shadow-sm">
+                <div className="border-b border-brand-border p-4"><h2 className="font-semibold text-brand-black">{title}</h2><p className="text-xs text-brand-gray">{kind === "category" ? "Manage product vehicle types and categories." : "Manage brands assigned to products."}</p></div>
+                <form onSubmit={(event) => { event.preventDefault(); void addCatalog(kind); }} className="flex flex-col gap-3 border-b border-brand-border p-4 sm:flex-row">
+                  <input value={newValue} onChange={(event) => setNewValue(event.target.value)} maxLength={80} required placeholder={`Add ${kind === "category" ? "category / vehicle type" : "brand"}...`} className="input-field min-w-0 flex-1 py-2" />
+                  <button disabled={Boolean(catalogBusy)} className="btn-primary justify-center rounded-lg px-4 py-2 text-sm disabled:opacity-50"><Plus size={15} /> Add {kind}</button>
+                </form>
+                <div className="p-4">
+                  <input value={searchValue} onChange={(event) => setSearchValue(event.target.value)} placeholder={`Search ${kind}s...`} className="input-field mb-3 py-2" />
+                  <div className="divide-y divide-brand-border">
+                    {list.map((name) => (
+                      <div key={name} className="flex items-center justify-between gap-3 py-3">
+                        <div><p className="font-medium text-brand-black">{name}</p><p className="text-xs text-brand-gray">{products.filter((product) => (kind === "category" ? product.category : product.brand).toLowerCase() === name.toLowerCase()).length} products</p></div>
+                        <div className="flex gap-3"><button disabled={Boolean(catalogBusy)} onClick={() => void renameCatalog(kind, name)} aria-label={`Rename ${name}`} className="text-brand-gray hover:text-brand-black disabled:opacity-40"><Edit size={15} /></button><button disabled={Boolean(catalogBusy)} onClick={() => void removeCatalog(kind, name)} aria-label={`Delete ${name}`} className="text-brand-gray hover:text-brand-red disabled:opacity-40"><Trash size={15} /></button></div>
+                      </div>
+                    ))}
+                    {!list.length && <p className="py-8 text-center text-sm text-brand-gray">No {kind}s found.</p>}
+                  </div>
+                </div>
+              </section>
+            );
+          })()}
+
+          {activeTab === "orders" && (
+            <section className="overflow-hidden rounded-xl border border-brand-border bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border p-4">
+                <div><h2 className="font-semibold text-brand-black">Order management</h2><p className="text-xs text-brand-gray">{orders.length} orders · payment status tracked from checkout</p></div>
+                <label className="relative w-full sm:w-80"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input value={orderSearch} onChange={(event) => setOrderSearch(event.target.value)} placeholder="Search order, customer, email..." className="input-field py-2 pl-9" /></label>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-brand-light text-xs uppercase text-brand-gray"><tr>{["Order", "Customer", "Date", "Total", "Payment", "Status"].map((head) => <th key={head} className="whitespace-nowrap px-4 py-3">{head}</th>)}</tr></thead>
+                  <tbody>{visibleOrders.map((order) => (
+                    <tr key={order.id} className="border-t border-brand-border hover:bg-brand-light/60">
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-brand-red">{order.id}</td><td className="px-4 py-3"><p className="text-brand-black">{order.customerName}</p><p className="text-xs text-brand-gray">{order.customerEmail || "Email unavailable"}</p></td><td className="whitespace-nowrap px-4 py-3 text-brand-gray">{order.date}</td><td className="whitespace-nowrap px-4 py-3 font-semibold text-brand-black">{formatLkr(order.total)}</td><td className="px-4 py-3"><p className="text-brand-gray">{order.paymentMethod}</p><p className="text-xs text-gray-500">{order.paymentStatus}</p></td>
+                      <td className="px-4 py-3"><select disabled={busyOrderId === order.id} value={order.status} onChange={(event) => void updateOrderStatus(order.id, event.target.value as AdminOrderStatus)} className="rounded-md border border-brand-border bg-white px-2 py-1.5 text-xs text-brand-black focus:border-brand-red focus:outline-none disabled:opacity-50">{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                {!visibleOrders.length && <p className="p-8 text-center text-sm text-brand-gray">{loading ? "Loading orders..." : "No matching orders."}</p>}
+              </div>
+            </section>
+          )}
+
+          {activeTab === "users" && (
+            <section className="overflow-hidden rounded-xl border border-brand-border bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border p-4">
+                <div><h2 className="font-semibold text-brand-black">User management</h2><p className="text-xs text-brand-gray">{users.length} registered users · role changes are audited by server authorization</p></div>
+                <label className="relative w-full sm:w-80"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Search name, email or phone..." className="input-field py-2 pl-9" /></label>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-brand-light text-xs uppercase text-brand-gray"><tr>{["User", "Joined", "Points", "Orders", "Total spent", "Role", "Access"].map((head) => <th key={head} className="whitespace-nowrap px-4 py-3">{head}</th>)}</tr></thead>
+                  <tbody>{visibleUsers.map((user) => (
+                    <tr key={user.id} className="border-t border-brand-border hover:bg-brand-light/60">
+                      <td className="px-4 py-3"><p className="font-medium text-brand-black">{[user.firstName, user.lastName].filter(Boolean).join(" ") || "Unnamed user"}</p><p className="text-xs text-brand-gray">{user.email}</p></td><td className="whitespace-nowrap px-4 py-3 text-brand-gray">{user.memberSince}</td><td className="px-4 py-3 text-amber-700">{user.loyaltyPoints.toLocaleString()} pts</td><td className="px-4 py-3 text-brand-gray">{user.orders}</td><td className="whitespace-nowrap px-4 py-3 font-semibold text-brand-red">{formatLkr(user.totalSpent)}</td><td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs ${user.role === "Admin" ? "bg-red-50 text-brand-red" : "bg-gray-100 text-brand-gray"}`}>{user.role}</span></td>
+                      <td className="px-4 py-3"><button disabled={busyUserId === user.id} onClick={() => void updateUserRole(user.id, user.role === "Admin" ? "Customer" : "Admin")} className="whitespace-nowrap rounded-md border border-brand-border px-2.5 py-1.5 text-xs text-brand-gray hover:border-brand-red hover:text-brand-red disabled:opacity-50">{busyUserId === user.id ? "Saving..." : user.role === "Admin" ? "Remove admin" : "Make admin"}</button></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                {!visibleUsers.length && <p className="p-8 text-center text-sm text-brand-gray">{loading ? "Loading users..." : "No matching users."}</p>}
+              </div>
+            </section>
+          )}
+        </main>
+      </div>
+
+      {formOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => { setEditing(null); setFormOpen(false); }}>
+          <form onSubmit={saveProduct} onClick={(event) => event.stopPropagation()} className="w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl bg-white p-6 text-brand-black max-h-[90vh]">
+            <div className="flex items-center justify-between"><h2 className="font-display text-xl font-extrabold">{editing ? "Edit product" : "Add product"}</h2><button type="button" onClick={() => { setEditing(null); setFormOpen(false); }} aria-label="Close product form"><X size={18} /></button></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(["name", "brand", "size", "image", "loadIndex", "speedRating"] as const).map((field) => <label key={field} className="text-xs font-medium capitalize">{field}<input required value={String(form[field])} onChange={(event) => setField(field, event.target.value)} list={field === "brand" ? "admin-brands" : undefined} className="input-field mt-1" /></label>)}
+              <datalist id="admin-brands">{brands.map((brand) => <option key={brand} value={brand} />)}</datalist>
+              <label className="text-xs font-medium">Vehicle type / category<input required value={form.category} onChange={(event) => setField("category", event.target.value)} list="admin-categories" className="input-field mt-1" /></label>
+              <datalist id="admin-categories">{categories.map((category) => <option key={category} value={category} />)}</datalist>
+              {(["price", "rating", "reviewCount", "width", "aspectRatio", "rimDiameter", "stock"] as const).map((field) => <label key={field} className="text-xs font-medium capitalize">{field}<input required min={0} type="number" step="any" value={String(form[field])} onChange={(event) => setField(field, Number(event.target.value))} className="input-field mt-1" /></label>)}
+              <label className="text-xs font-medium">Original price (optional)<input min={0} type="number" step="any" value={form.originalPrice ?? ""} onChange={(event) => setForm((current) => ({ ...current, originalPrice: event.target.value ? Number(event.target.value) : undefined }))} className="input-field mt-1" /></label>
             </div>
-          </div>
+            <label className="text-xs font-medium">Description<textarea required value={form.description} onChange={(event) => setField("description", event.target.value)} className="input-field mt-1 min-h-24" /></label>
+            <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.isNew || false} onChange={(event) => setField("isNew", event.target.checked)} /> New product</label>
+            <button disabled={saving} className="btn-primary w-full justify-center">{saving ? "Saving..." : "Save product"}</button>
+          </form>
         </div>
       )}
     </div>

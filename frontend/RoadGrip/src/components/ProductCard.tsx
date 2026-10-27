@@ -30,9 +30,9 @@ export default function ProductCard({ product, layout = "grid" }: ProductCardPro
               <StarRating rating={product.rating} size="sm" showValue reviewCount={product.reviewCount} />
             </div>
             <div className="text-right shrink-0">
-              <p className="font-display font-700 text-brand-red text-lg">£{product.price.toFixed(2)}</p>
+              <p className="font-display font-700 text-brand-red text-lg">Rs {product.price.toFixed(2)}</p>
               {product.originalPrice && (
-                <p className="text-xs text-gray-400 line-through">£{product.originalPrice.toFixed(2)}</p>
+                <p className="text-xs text-gray-400 line-through">Rs {product.originalPrice.toFixed(2)}</p>
               )}
             </div>
           </div>
@@ -79,9 +79,9 @@ export default function ProductCard({ product, layout = "grid" }: ProductCardPro
         </div>
         <div className="flex items-center justify-between mt-3">
           <div>
-            <span className="font-display font-700 text-brand-red text-base">£{product.price.toFixed(2)}</span>
+            <span className="font-display font-700 text-brand-red text-base">Rs {product.price.toFixed(2)}</span>
             {product.originalPrice && (
-              <span className="text-xs text-gray-400 line-through ml-1.5">£{product.originalPrice.toFixed(2)}</span>
+              <span className="text-xs text-gray-400 line-through ml-1.5">Rs {product.originalPrice.toFixed(2)}</span>
             )}
           </div>
         </div>

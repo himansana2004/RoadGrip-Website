@@ -9,13 +9,16 @@ import CheckoutPage from "./pages/CheckoutPage";
 import AccountPage from "./pages/AccountPage";
 import ContactPage from "./pages/ContactPage";
 import AdminPage from "./pages/AdminPage";
+import { useEffect } from "react";
 
 function RouterOutlet() {
-  const { currentPage } = useApp();
+  const { currentPage, isAdmin, navigate } = useApp();
 
-  if (currentPage === "admin") {
-    return <AdminPage />;
-  }
+  useEffect(() => {
+    if (currentPage === "admin" && !isAdmin) navigate("home");
+  }, [currentPage, isAdmin, navigate]);
+
+  if (currentPage === "admin") return isAdmin ? <AdminPage /> : null;
 
   return (
     <div className="flex flex-col min-h-screen">

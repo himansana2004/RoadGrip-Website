@@ -99,8 +99,8 @@ export default function CartPage() {
                       </button>
                     </div>
                     <div className="text-right">
-                      <p className="font-display font-700 text-brand-red text-lg">£{(product.price * quantity).toFixed(2)}</p>
-                      {quantity > 1 && <p className="text-xs text-gray-400">£{product.price.toFixed(2)} each</p>}
+                      <p className="font-display font-700 text-brand-red text-lg">Rs {(product.price * quantity).toFixed(2)}</p>
+                      {quantity > 1 && <p className="text-xs text-gray-400">Rs {product.price.toFixed(2)} each</p>}
                     </div>
                   </div>
                 </div>
@@ -122,26 +122,26 @@ export default function CartPage() {
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between text-brand-gray">
                   <span>Subtotal ({cart.reduce((s, i) => s + i.quantity, 0)} items)</span>
-                  <span>£{cartTotal.toFixed(2)}</span>
+                  <span>Rs {cartTotal.toFixed(2)}</span>
                 </div>
                 {promoApplied && (
                   <div className="flex justify-between text-green-600">
                     <span>Promo (ROADGRIP10)</span>
-                    <span>-£{discount.toFixed(2)}</span>
+                    <span>-Rs {discount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-brand-gray">
                   <span>Delivery</span>
                   <span className={delivery === 0 ? "text-green-600 font-600" : ""}>
-                    {delivery === 0 ? "FREE" : `£${delivery.toFixed(2)}`}
+                    {delivery === 0 ? "FREE" : `Rs ${delivery.toFixed(2)}`}
                   </span>
                 </div>
                 {delivery > 0 && (
-                  <p className="text-xs text-brand-gray">Add £{(150 - cartTotal).toFixed(2)} more for free delivery</p>
+                  <p className="text-xs text-brand-gray">Add Rs {(150 - cartTotal).toFixed(2)} more for free delivery</p>
                 )}
                 <div className="border-t border-brand-border pt-3 flex justify-between font-display font-800 text-brand-black text-lg">
                   <span>Total</span>
-                  <span>£{total.toFixed(2)}</span>
+                  <span>Rs {total.toFixed(2)}</span>
                 </div>
               </div>
 

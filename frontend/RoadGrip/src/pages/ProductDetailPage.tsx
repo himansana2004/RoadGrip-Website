@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { products, reviews } from "../data/products";
 import { useApp } from "../context/AppContext";
 import ProductCard from "../components/ProductCard";
 import StarRating from "../components/StarRating";
@@ -13,8 +12,11 @@ const GALLERY_IMAGES = [
 ];
 
 export default function ProductDetailPage() {
-  const { selectedProductId, navigate, addToCart } = useApp();
+  const { selectedProductId, navigate, addToCart, products } = useApp();
   const product = products.find((p) => p.id === selectedProductId) ?? products[0];
+  if (!product) {
+    return <div className="min-h-screen flex items-center justify-center text-brand-gray">No products are available yet.</div>;
+  }
   const related = products.filter((p) => p.id !== product.id && p.category === product.category).slice(0, 4);
 
   const [activeImage, setActiveImage] = useState(0);
@@ -95,12 +97,12 @@ export default function ProductDetailPage() {
 
             {/* Price */}
             <div className="flex items-baseline gap-3 mt-5">
-              <span className="font-display font-900 text-brand-red text-4xl">£{product.price.toFixed(2)}</span>
+              <span className="font-display font-900 text-brand-red text-4xl">Rs {product.price.toFixed(2)}</span>
               {product.originalPrice && (
                 <>
-                  <span className="text-gray-400 line-through text-lg">£{product.originalPrice.toFixed(2)}</span>
+                  <span className="text-gray-400 line-through text-lg">Rs {product.originalPrice.toFixed(2)}</span>
                   <span className="badge badge-red">
-                    Save £{(product.originalPrice - product.price).toFixed(2)}
+                    Save Rs {(product.originalPrice - product.price).toFixed(2)}
                   </span>
                 </>
               )}
@@ -131,7 +133,7 @@ export default function ProductDetailPage() {
                   <Plus size={16} />
                 </button>
               </div>
-              <p className="text-xs text-brand-gray">{qty > 1 ? `£${(product.price * qty).toFixed(2)} total` : ""}</p>
+              <p className="text-xs text-brand-gray">{qty > 1 ? `Rs ${(product.price * qty).toFixed(2)} total` : ""}</p>
             </div>
 
             {/* CTAs */}
@@ -153,7 +155,7 @@ export default function ProductDetailPage() {
             {/* Trust badges */}
             <div className="grid grid-cols-3 gap-3 mt-6">
               {[
-                { icon: Truck, text: "Free delivery over £150" },
+                { icon: Truck, text: "Free delivery over Rs 150" },
                 { icon: Shield, text: "Genuine product guaranteed" },
                 { icon: RotateCcw, text: "14-day returns" },
               ].map(({ icon: Icon, text }) => (
@@ -255,29 +257,7 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
 
-                {/* Reviews list */}
-                <div className="space-y-5">
-                  {reviews.map((r) => (
-                    <div key={r.id} className="border border-brand-border rounded-xl p-5">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 bg-brand-red rounded-full flex items-center justify-center text-white font-display font-700 text-sm shrink-0">
-                            {r.author.split(" ").map((n) => n[0]).join("")}
-                          </div>
-                          <div>
-                            <p className="font-display font-600 text-brand-black text-sm">{r.author}</p>
-                            <p className="text-xs text-brand-gray">{r.date}</p>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <StarRating rating={r.rating} size="sm" />
-                          {r.verified && <span className="badge badge-green text-xs">Verified Purchase</span>}
-                        </div>
-                      </div>
-                      <p className="text-sm text-brand-gray mt-3 leading-relaxed">{r.comment}</p>
-                    </div>
-                  ))}
-                </div>
+                <p className="text-sm text-brand-gray">Customer reviews will appear here after they are added by the store.</p>
 
                 {/* Write review */}
                 <div className="border border-brand-border rounded-xl p-6 max-w-lg">

@@ -1,21 +1,29 @@
 import { useState } from "react";
-import { products } from "../data/products";
 import ProductCard from "../components/ProductCard";
 import { useApp } from "../context/AppContext";
 import { Search, Grid, List, ChevronRight, ChevronDown } from "../components/Icons";
 
-const BRANDS = ["Michelin", "Pirelli", "Continental", "Bridgestone", "Goodyear", "Dunlop", "Cooper", "Yokohama"];
-
 export default function ShopPage() {
-  const { navigate } = useApp();
+  const { navigate, shopSearch, products } = useApp();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [sort, setSort] = useState("popular");
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
-  const [priceMax, setPriceMax] = useState(300);
-  const [search, setSearch] = useState("");
+  const [priceMax, setPriceMax] = useState<number | null>(null);
+  const [search, setSearch] = useState(shopSearch);
+  const [minRating, setMinRating] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const maxCatalogPrice = Math.max(100000, ...products.map((product) => product.price));
+  const requestedSize = search.match(/^\s*(\d+)\s*\/\s*(\d+)\s*R\s*(\d+)\s*$/i);
+  const brandOptions = [...new Map(products
+    .map((product) => [product.brand.trim().toLowerCase(), product.brand.trim()] as const)
+    .filter(([key, value]) => key && value)).values()]
+    .sort((a, b) => a.localeCompare(b));
+  const categoryOptions = [...new Map(products
+    .map((product) => [product.category.trim().toLowerCase(), product.category.trim()] as const)
+    .filter(([key, value]) => key && value)).values()]
+    .sort((a, b) => a.localeCompare(b));
 
   const toggleBrand = (b: string) =>
     setSelectedBrands((prev) => prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]);
@@ -23,10 +31,13 @@ export default function ShopPage() {
     setSelectedCats((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
 
   let filtered = products.filter((p) => {
-    if (selectedBrands.length && !selectedBrands.includes(p.brand)) return false;
-    if (selectedCats.length && !selectedCats.includes(p.category)) return false;
-    if (p.price > priceMax) return false;
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.brand.toLowerCase().includes(search.toLowerCase())) return false;
+    if (selectedBrands.length && !selectedBrands.some((brand) => brand.toLowerCase() === p.brand.trim().toLowerCase())) return false;
+    if (selectedCats.length && !selectedCats.some((category) => category.toLowerCase() === p.category.trim().toLowerCase())) return false;
+    if (priceMax !== null && p.price > priceMax) return false;
+    if (p.rating < minRating) return false;
+    if (requestedSize) {
+      if (p.width !== Number(requestedSize[1]) || p.aspectRatio !== Number(requestedSize[2]) || p.rimDiameter !== Number(requestedSize[3])) return false;
+    } else if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.brand.toLowerCase().includes(search.toLowerCase()) && !p.category.toLowerCase().includes(search.toLowerCase()) && !p.size.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -39,14 +50,15 @@ export default function ShopPage() {
 
   const ITEMS_PER_PAGE = 6;
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paged = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  const currentPage = Math.min(page, Math.max(totalPages, 1));
+  const paged = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   const Sidebar = () => (
     <aside className="w-full lg:w-64 shrink-0 space-y-6">
       {/* Category filter */}
       <div>
         <h3 className="font-display font-700 text-brand-black text-sm uppercase tracking-wide mb-3">Vehicle Type</h3>
-        {["Car", "SUV", "Bike", "Van"].map((c) => (
+        {categoryOptions.map((c) => (
           <label key={c} className="flex items-center gap-2.5 py-1.5 cursor-pointer group">
             <input
               type="checkbox"
@@ -55,7 +67,7 @@ export default function ShopPage() {
               className="w-4 h-4 rounded border-brand-border accent-brand-red"
             />
             <span className="text-sm text-brand-gray group-hover:text-brand-black transition">{c} Tyres</span>
-            <span className="ml-auto text-xs text-gray-400">{products.filter((p) => p.category === c).length}</span>
+            <span className="ml-auto text-xs text-gray-400">{products.filter((p) => p.category.trim().toLowerCase() === c.toLowerCase()).length}</span>
           </label>
         ))}
       </div>
@@ -65,7 +77,7 @@ export default function ShopPage() {
       {/* Brand filter */}
       <div>
         <h3 className="font-display font-700 text-brand-black text-sm uppercase tracking-wide mb-3">Brand</h3>
-        {BRANDS.map((b) => (
+        {brandOptions.map((b) => (
           <label key={b} className="flex items-center gap-2.5 py-1.5 cursor-pointer group">
             <input
               type="checkbox"
@@ -83,18 +95,18 @@ export default function ShopPage() {
       {/* Price filter */}
       <div>
         <h3 className="font-display font-700 text-brand-black text-sm uppercase tracking-wide mb-3">
-          Price Range <span className="text-brand-red font-body font-normal">up to £{priceMax}</span>
+          Price Range <span className="text-brand-red font-body font-normal">up to Rs {(priceMax ?? maxCatalogPrice).toLocaleString()}</span>
         </h3>
         <input
           type="range"
-          min={50}
-          max={300}
-          value={priceMax}
+          min={0}
+          max={maxCatalogPrice}
+          value={priceMax ?? maxCatalogPrice}
           onChange={(e) => setPriceMax(Number(e.target.value))}
           className="w-full accent-brand-red"
         />
         <div className="flex justify-between text-xs text-brand-gray mt-1">
-          <span>£50</span><span>£300</span>
+          <span>Rs 0</span><span>Rs {maxCatalogPrice.toLocaleString()}</span>
         </div>
       </div>
 
@@ -105,7 +117,7 @@ export default function ShopPage() {
         <h3 className="font-display font-700 text-brand-black text-sm uppercase tracking-wide mb-3">Min Rating</h3>
         {[4.5, 4.0, 3.5].map((r) => (
           <label key={r} className="flex items-center gap-2.5 py-1.5 cursor-pointer group">
-            <input type="radio" name="rating" className="w-4 h-4 accent-brand-red" />
+            <input type="radio" name="rating" checked={minRating === r} onChange={() => setMinRating(r)} className="w-4 h-4 accent-brand-red" />
             <span className="text-sm text-brand-gray flex items-center gap-1">
               {"★".repeat(Math.floor(r))}{"☆".repeat(5 - Math.floor(r))}
               <span className="text-xs text-gray-400">({r}+)</span>
@@ -114,9 +126,9 @@ export default function ShopPage() {
         ))}
       </div>
 
-      {(selectedBrands.length > 0 || selectedCats.length > 0) && (
+      {(selectedBrands.length > 0 || selectedCats.length > 0 || minRating > 0 || priceMax !== null) && (
         <button
-          onClick={() => { setSelectedBrands([]); setSelectedCats([]); }}
+          onClick={() => { setSelectedBrands([]); setSelectedCats([]); setMinRating(0); setPriceMax(null); }}
           className="text-sm text-brand-red font-display font-600 hover:underline"
         >
           Clear all filters
@@ -231,8 +243,8 @@ export default function ShopPage() {
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 mt-10">
                 <button
-                  onClick={() => setPage(Math.max(1, page - 1))}
-                  disabled={page === 1}
+                  onClick={() => setPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
                   className="w-9 h-9 rounded-lg border border-brand-border text-sm font-display font-600 disabled:opacity-30 hover:border-brand-red hover:text-brand-red transition"
                 >
                   ‹
@@ -242,7 +254,7 @@ export default function ShopPage() {
                     key={p}
                     onClick={() => setPage(p)}
                     className={`w-9 h-9 rounded-lg text-sm font-display font-600 transition ${
-                      p === page
+                      p === currentPage
                         ? "bg-brand-red text-white border border-brand-red"
                         : "border border-brand-border hover:border-brand-red hover:text-brand-red"
                     }`}
@@ -251,8 +263,8 @@ export default function ShopPage() {
                   </button>
                 ))}
                 <button
-                  onClick={() => setPage(Math.min(totalPages, page + 1))}
-                  disabled={page === totalPages}
+                  onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
                   className="w-9 h-9 rounded-lg border border-brand-border text-sm font-display font-600 disabled:opacity-30 hover:border-brand-red hover:text-brand-red transition"
                 >
                   ›

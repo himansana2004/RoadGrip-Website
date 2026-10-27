@@ -32,9 +32,9 @@ export default function ContactPage() {
               {
                 icon: Phone,
                 label: "Call Us",
-                value: "0800 123 4567",
+                value: "0775696373",
                 sub: "Mon–Sat 8am–6pm · Sun 10am–4pm",
-                href: "tel:08001234567",
+                href: "tel:0775696373",
               },
               {
                 icon: Mail,

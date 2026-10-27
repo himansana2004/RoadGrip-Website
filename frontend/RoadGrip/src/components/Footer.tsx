@@ -94,11 +94,11 @@ export default function Footer() {
             <ul className="space-y-3">
               <li className="flex items-start gap-3 text-sm text-gray-400">
                 <MapPin size={16} className="text-brand-red mt-0.5 shrink-0" />
-                <span>42 Motor Park Road, Birmingham, B12 8QR, United Kingdom</span>
+                <span>Baddegama Road, Meepawala, Galle</span>
               </li>
               <li className="flex items-center gap-3 text-sm text-gray-400">
                 <Phone size={16} className="text-brand-red shrink-0" />
-                <a href="tel:08001234567" className="hover:text-brand-red transition">0800 123 4567</a>
+                <a href="tel:0775696373" className="hover:text-brand-red transition">0775696373</a>
               </li>
               <li className="flex items-center gap-3 text-sm text-gray-400">
                 <Mail size={16} className="text-brand-red shrink-0" />
